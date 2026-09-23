@@ -1,1 +1,44 @@
+services:
+  # docker daemon (docker-in-docker) so jenkins can build images
+  docker:
+    image: docker:27-dind
+    container_name: jenkins-docker
+    privileged: true        # dind needs this, only this container has it
+    restart: unless-stopped
+    environment:
+      DOCKER_TLS_CERTDIR: /certs    # turns on TLS between jenkins and docker
+    volumes:
+      - jenkins-docker-certs:/certs/client   # certs shared with jenkins
+      - jenkins-data:/var/jenkins_home       # same workspace path as jenkins
+      - docker-data:/var/lib/docker          # keeps images after restart
+    networks:
+      jenkins:
+        aliases:
+          - docker      # jenkins connects using this name
 
+  # jenkins server
+  jenkins:
+    build: ./jenkins
+    container_name: jenkins
+    restart: unless-stopped
+    depends_on:
+      - docker
+    ports:
+      - "127.0.0.1:8080:8080"   # only reachable from the server itself
+    environment:
+      DOCKER_HOST: tcp://docker:2376     # talk to the dind container
+      DOCKER_CERT_PATH: /certs/client    # where the TLS certs are
+      DOCKER_TLS_VERIFY: "1"             # always check the certs
+    volumes:
+      - jenkins-data:/var/jenkins_home         # jobs, logs and settings
+      - jenkins-docker-certs:/certs/client:ro  # certs, read only
+    networks:
+      - jenkins
+
+volumes:
+  jenkins-data:
+  jenkins-docker-certs:
+  docker-data:
+
+networks:
+  jenkins:
